@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FCL · Fabrique Content Lab</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">F</span>
+    <div>
+      <h1>FCL</h1>
+      <p>Fabrique Content Lab · AIGC 内容生产中台</p>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="dashboard" class="active">看板</button>
+    <button data-tab="workspace">生产台</button>
+    <button data-tab="review">审核队列</button>
+    <button data-tab="system">系统状态</button>
+  </nav>
+  <div class="status" id="conn">连接中…</div>
+</header>
+
+<main>
+  <!-- ============ 看板 ============ -->
+  <section id="tab-dashboard" class="tab-panel active">
+    <div class="section-head">
+      <h2>内容生产看板</h2>
+      <p class="muted">指标口径：仅统计生成成功的内容；成本按配置单价估算，缓存命中计为节省。</p>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid-2">
+      <div class="card">
+        <h3>四维平均分</h3>
+        <div id="dims" class="dims"></div>
+      </div>
+      <div class="card">
+        <h3>近 7 天产出</h3>
+        <div id="trend" class="trend"></div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <h3>最近事件</h3>
+        <ul id="events" class="events"></ul>
+      </div>
+      <div class="card">
+        <h3>队列与限流</h3>
+        <div id="queue" class="kv"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 生产台 ============ -->
+  <section id="tab-workspace" class="tab-panel">
+    <div class="section-head">
+      <h2>批量生产</h2>
+      <p class="muted">选商品 → 选角度 → 设定变体数。任务进入异步队列，生成过程不阻塞页面。</p>
+    </div>
+    <div class="grid-side">
+      <div class="card">
+        <h3>1. 选商品</h3>
+        <select id="product-select" size="8" class="list"></select>
+        <div class="form-row">
+          <input id="p-name" placeholder="商品名，如：双面呢短大衣" />
+          <input id="p-category" placeholder="品类，如：大衣" />
+        </div>
+        <div class="form-row">
+          <input id="p-fabric" placeholder="材质，如：羊毛双面呢" />
+          <input id="p-price" placeholder="价格带，如：3000-4000" />
+        </div>
+        <input id="p-highlights" placeholder="卖点，用逗号分隔：落肩、手工锁边、不压肩" />
+        <button id="add-product" class="btn ghost">新增商品</button>
+      </div>
+      <div class="card">
+        <h3>2. 生成设置</h3>
+        <label class="field">内容角度
+          <select id="angle">
+            <option>通勤场景</option><option>约会场景</option>
+            <option>松弛感</option><option>旅行度假</option><option>职场面试</option>
+          </select>
+        </label>
+        <label class="field">变体数量
+          <input id="variants" type="number" min="1" max="20" value="3" />
+        </label>
+        <button id="run-btn" class="btn primary">开始批量生成</button>
+        <div id="run-progress" class="progress-wrap hidden">
+          <div class="progress"><i id="progress-bar"></i></div>
+          <p id="progress-text" class="muted"></p>
+        </div>
+      </div>
+    </div>
+    <div class="section-head"><h2>本次产出</h2></div>
+    <div id="cards" class="cards"></div>
+  </section>
+
+  <!-- ============ 审核队列 ============ -->
+  <section id="tab-review" class="tab-panel">
+    <div class="section-head">
+      <h2>审核队列</h2>
+      <p class="muted">三层质检的最后一道：规则拦住「不能发」，模型筛掉「不值得看」，人来决定「发不发」。</p>
+    </div>
+    <div class="filter-row" id="filters">
+      <button class="chip active" data-status="all">全部</button>
+      <button class="chip" data-status="draft">待审</button>
+      <button class="chip" data-status="rework">需重写</button>
+      <button class="chip" data-status="approved">已通过</button>
+      <button class="chip" data-status="rejected">已驳回</button>
+    </div>
+    <div id="review-cards" class="cards"></div>
+  </section>
+
+  <!-- ============ 系统状态 ============ -->
+  <section id="tab-system" class="tab-panel">
+    <div class="section-head">
+      <h2>系统状态</h2>
+      <p class="muted">现场演示用：证明这套东西不是截图，是真的在跑。</p>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h3>运行时</h3><div id="sys-runtime" class="kv"></div></div>
+      <div class="card"><h3>RAG 索引</h3><div id="sys-rag" class="kv"></div></div>
+    </div>
+    <div class="card"><h3>接口</h3><p class="muted">GET /api/products · POST /api/runs · GET /api/runs/{id} · POST /api/runs/contents/{id}/review · GET /api/dashboard · <a href="/docs" target="_blank">/docs 自动文档</a></p></div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

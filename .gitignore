@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+data/*.db
+data/*.db-*
+data/metrics.json
+logs/
+.env
+.pytest_cache/
