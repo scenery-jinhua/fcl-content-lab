@@ -3,6 +3,8 @@
 > 面向设计师女装品牌的小红书内容生产系统：**批量生成 → 硬规则质检 → 四维打分 → 人工审核 → 成本看板**。
 >
 > 个人项目 · 借助 AI 编程工具（Codex / DSH）实现。需求拆解、技术选型、提示词与评测口径由本人设计，并逐文件读懂核心代码。
+>
+> **仓库地址**：<https://github.com/scenery-jinhua/fcl-content-lab>
 
 ![看板](docs/screenshot-dashboard.png)
 
@@ -22,6 +24,11 @@
 ---
 
 ## 3 分钟跑起来（不需要任何 API Key）
+
+`ash
+git clone https://github.com/scenery-jinhua/fcl-content-lab.git
+cd fcl-content-lab
+`
 
 ### Windows（最省事）
 
@@ -172,3 +179,5 @@ python scripts/config_audit.py
 ## 许可
 
 MIT License，详见 [LICENSE](LICENSE)。仅用于个人求职与学习展示。
+
+仓库：<https://github.com/scenery-jinhua/fcl-content-lab>
