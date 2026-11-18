@@ -108,3 +108,8 @@ class Dashboard(BaseModel):
     by_dim: dict[str, float]
     recent_events: list[dict]
     trend: list[dict]
+    # 下面三个是前端要用的运行态数据。Pydantic v2 默认会丢弃未声明的字段，
+    # 少写一个，接口就「静默少一个字段」，前端读 undefined 直接抛异常 —— 真踩过的坑。
+    queue: dict = {}
+    cache_stats: dict = {}
+    runs: dict = {}

@@ -7,12 +7,14 @@
 """
 
 import json
+import os
 import sys
 import time
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
+# 端口可覆盖：别人克隆后如果 8000 被占用，可以 FCL_BASE=http://127.0.0.1:8010 再跑
+BASE = os.getenv("FCL_BASE", "http://127.0.0.1:8000")
 
 
 def main() -> int:

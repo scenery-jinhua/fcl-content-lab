@@ -83,6 +83,7 @@ def dashboard(db: Session) -> dict:
         "trend": trend,
         "queue": pool.snapshot(),
         "cache_stats": cache.stats.as_dict() if hasattr(cache.stats, "as_dict") else {},
+        # 前端 KPI 里会用到「累计任务数」，接口必须给出，缺字段会让整个看板渲染中断
         "runs": {"total": len(runs), "finished": sum(1 for r in runs if r.finished_at)},
     }
 

@@ -1,6 +1,6 @@
 /* FCL 前端：原生 JS，不引入构建链。
    三个核心交互：提交批量任务 → 轮询进度 → 渲染卡片并审核。
-   面试时可讲：为什么先轮询不用 WebSocket（实现简单、任务短、够用；长任务再换 SSE/WS）。 */
+   设计原则：任何一个字段缺失都不能让整块页面白掉 —— 所有数值都先兜底再渲染。 */
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -13,6 +13,10 @@ const state = {
   reviewFilter: "all",
   reviewData: [],
 };
+
+const DIM_NAME = { brand_tone: "调性", platform_fit: "平台", info_density: "信息", compliance: "合规" };
+const DIM_LABEL = { brand_tone: "品牌调性", platform_fit: "平台适配", info_density: "信息密度", compliance: "合规安全" };
+const STATUS_TEXT = { draft: "待审", rework: "需重写", approved: "已通过", rejected: "已驳回" };
 
 /* ---------------- 通用 ---------------- */
 async function api(path, options = {}) {
@@ -32,11 +36,17 @@ function toast(msg) {
   el.textContent = msg;
   el.classList.add("show");
   clearTimeout(el._t);
-  el._t = setTimeout(() => el.classList.remove("show"), 2200);
+  el._t = setTimeout(() => el.classList.remove("show"), 2400);
 }
 
 function esc(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/** 取数并给默认值：接口少字段时不抛异常，页面照常渲染。 */
+function num(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 /* ---------------- 标签页 ---------------- */
@@ -55,12 +65,9 @@ $("#tabs").addEventListener("click", (e) => {
 async function loadProducts() {
   state.products = await api("/api/products");
   const sel = $("#product-select");
-  sel.innerHTML = state.products
-    .map((p) => `<option value="${p.id}">${esc(p.name)} · ${esc(p.category)}</option>`)
-    .join("");
-  if (!state.products.length) {
-    sel.innerHTML = `<option disabled>暂无商品，先新增一个</option>`;
-  }
+  sel.innerHTML = state.products.length
+    ? state.products.map((p) => `<option value="${p.id}">${esc(p.name)} · ${esc(p.category)}</option>`).join("")
+    : `<option disabled>暂无商品，先新增一个</option>`;
 }
 
 $("#add-product").addEventListener("click", async () => {
@@ -117,9 +124,9 @@ function pollRun(runId) {
   state.pollTimer = setInterval(async () => {
     try {
       const detail = await api(`/api/runs/${runId}`);
-      setProgress(detail.run.done + detail.run.failed, detail.run.total);
-      renderCards($("#cards"), detail.contents, detail.product);
-      if (detail.run.finished_at || detail.run.done + detail.run.failed >= detail.run.total) {
+      setProgress(num(detail.run.done) + num(detail.run.failed), num(detail.run.total));
+      renderCards($("#cards"), detail.contents || [], detail.product);
+      if (detail.run.finished_at || num(detail.run.done) + num(detail.run.failed) >= num(detail.run.total)) {
         clearInterval(state.pollTimer);
         toast("生成完成");
         loadDashboard();
@@ -132,10 +139,8 @@ function pollRun(runId) {
 }
 
 /* ---------------- 渲染内容卡片 ---------------- */
-const STATUS_TEXT = { draft: "待审", rework: "需重写", approved: "已通过", rejected: "已驳回" };
-
 function renderCards(container, contents, product) {
-  if (!contents.length) {
+  if (!contents || !contents.length) {
     container.innerHTML = `<div class="empty">还没有产出。选个商品，点「开始批量生成」。</div>`;
     return;
   }
@@ -147,13 +152,13 @@ function renderCards(container, contents, product) {
       const bad = c.violations || [];
       const badge = c.judge_verdict === "pass" ? "pass" : "rework";
       const dims = Object.entries(scores)
-        .map(([k, v]) => `<span title="${esc(reasons[k] || "")}">${DIM_NAME[k] || k} ${Math.round(v)}</span>`)
+        .map(([k, v]) => `<span title="${esc(reasons[k] || "")}">${DIM_NAME[k] || k} ${Math.round(num(v))}</span>`)
         .join(" · ");
       return `
       <article class="note" data-id="${c.id}">
         <div class="top">
           <h3 class="title">${esc(c.title) || "（生成中…）"}</h3>
-          <div class="score">${c.score_total ? c.score_total.toFixed(0) : "—"}<small>/100</small></div>
+          <div class="score">${c.score_total ? num(c.score_total).toFixed(0) : "—"}<small>/100</small></div>
         </div>
         <div class="tags">
           <span class="badge ${badge}">${c.judge_verdict === "pass" ? "质检通过" : "建议重写"}</span>
@@ -167,8 +172,8 @@ function renderCards(container, contents, product) {
         ${bad.length ? `<div class="violations"><b>规则命中：</b>${bad.map((v) => esc(v.word)).join("、")}</div>` : ""}
         <div class="meta">
           <span>${dims}</span>
-          <span>tokens <b>${c.tokens_in + c.tokens_out}</b></span>
-          <span>耗时 <b>${(c.latency_ms / 1000).toFixed(1)}s</b></span>
+          <span>tokens <b>${num(c.tokens_in) + num(c.tokens_out)}</b></span>
+          <span>耗时 <b>${(num(c.latency_ms) / 1000).toFixed(1)}s</b></span>
           ${c.error ? `<span style="color:var(--red)">失败：${esc(c.error)}</span>` : ""}
         </div>
         <div class="actions">
@@ -180,8 +185,6 @@ function renderCards(container, contents, product) {
     })
     .join("");
 }
-
-const DIM_NAME = { brand_tone: "调性", platform_fit: "平台", info_density: "信息", compliance: "合规" };
 
 document.addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-act]");
@@ -204,6 +207,7 @@ document.addEventListener("click", async (e) => {
     const card = btn.closest(".note");
     card.querySelector(".badge.draft").textContent = act === "approve" ? "已通过" : "已驳回";
     toast(act === "approve" ? "已通过，可复制发布" : "已驳回");
+    loadDashboard();
   } catch (err) {
     toast("操作失败：" + err.message);
   }
@@ -212,16 +216,17 @@ document.addEventListener("click", async (e) => {
 /* ---------------- 看板 ---------------- */
 async function loadDashboard() {
   try {
-    const d = await api("/api/dashboard");
+    const d = (await api("/api/dashboard")) || {};
+    const runs = d.runs || {};
     const kpis = [
-      ["内容总量", d.total_contents, "条", `累计 ${d.runs.total} 个任务`],
-      ["一次通过率", (d.first_pass_rate * 100).toFixed(1), "%", "质检达标且无违规"],
-      ["缓存命中率", (d.cache_hit_rate * 100).toFixed(1), "%", "省下的重复调用"],
-      ["P95 延迟", (d.p95_latency_ms / 1000).toFixed(1), "s", `均值 ${(d.avg_latency_ms / 1000).toFixed(1)}s`],
-      ["规则拦截率", (d.rule_block_rate * 100).toFixed(1), "%", "命中违禁词/结构问题"],
-      ["平均分", d.avg_score, "分", "四维加权"],
-      ["token 消耗", d.total_tokens, "", "输入+输出"],
-      ["估算成本", `¥${d.estimated_cost_yuan.toFixed(3)}`, "", `缓存省下 ¥${d.saved_cost_yuan.toFixed(3)}`],
+      ["内容总量", num(d.total_contents), "条", `累计 ${num(runs.total)} 个任务`],
+      ["一次通过率", (num(d.first_pass_rate) * 100).toFixed(1), "%", "质检达标且无违规"],
+      ["缓存命中率", (num(d.cache_hit_rate) * 100).toFixed(1), "%", "省下的重复调用"],
+      ["P95 延迟", (num(d.p95_latency_ms) / 1000).toFixed(1), "s", `均值 ${(num(d.avg_latency_ms) / 1000).toFixed(1)}s`],
+      ["规则拦截率", (num(d.rule_block_rate) * 100).toFixed(1), "%", "命中违禁词 / 结构问题"],
+      ["平均分", num(d.avg_score), "分", "四维加权"],
+      ["token 消耗", num(d.total_tokens), "", "输入 + 输出"],
+      ["估算成本", `¥${num(d.estimated_cost_yuan).toFixed(3)}`, "", `缓存省下 ¥${num(d.saved_cost_yuan).toFixed(3)}`],
     ];
     $("#kpis").innerHTML = kpis
       .map(
@@ -234,50 +239,56 @@ async function loadDashboard() {
       )
       .join("");
 
-    const labels = { brand_tone: "品牌调性", platform_fit: "平台适配", info_density: "信息密度", compliance: "合规安全" };
-    $("#dims").innerHTML = Object.entries(d.by_dim)
-      .map(
-        ([k, v]) => `
+    const byDim = d.by_dim || {};
+    $("#dims").innerHTML = Object.entries(byDim).length
+      ? Object.entries(byDim)
+          .map(
+            ([k, v]) => `
       <div class="dim">
-        <span>${labels[k] || k}</span>
-        <div class="bar"><i style="width:${Math.max(2, v)}%"></i></div>
-        <span class="num">${v.toFixed(0)}</span>
+        <span>${DIM_LABEL[k] || k}</span>
+        <div class="bar"><i style="width:${Math.max(2, num(v))}%"></i></div>
+        <span class="num">${num(v).toFixed(0)}</span>
       </div>`
-      )
-      .join("");
+          )
+          .join("")
+      : `<div class="empty" style="border:0">还没有评分数据，先生成几条内容</div>`;
 
-    const maxCount = Math.max(1, ...d.trend.map((t) => t.count));
-    $("#trend").innerHTML = d.trend.length
-      ? d.trend
+    const trend = d.trend || [];
+    const maxCount = Math.max(1, ...trend.map((t) => num(t.count, 1)));
+    $("#trend").innerHTML = trend.length
+      ? trend
           .map(
             (t) => `
-        <div class="col" title="${t.count} 条 · ¥${t.cost}">
-          <i style="height:${Math.max(6, (t.count / maxCount) * 100)}%"></i>
-          <span>${t.day}</span>
+        <div class="col" title="${num(t.count)} 条 · ¥${num(t.cost).toFixed(4)}">
+          <i style="height:${Math.max(6, (num(t.count) / maxCount) * 100)}%"></i>
+          <span>${esc(t.day)}</span>
         </div>`
           )
           .join("")
       : `<div class="empty" style="border:0">还没有数据</div>`;
 
-    $("#events").innerHTML = d.recent_events.length
-      ? d.recent_events
+    const events = d.recent_events || [];
+    $("#events").innerHTML = events.length
+      ? events
           .map(
-            (e) => `<li><b>${esc(e.type)}</b><span>${esc(JSON.stringify(e.payload).slice(0, 60))}</span>
+            (e) => `<li><b>${esc(e.type)}</b><span>${esc(JSON.stringify(e.payload || {}).slice(0, 52))}</span>
             <time>${new Date(e.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time></li>`
           )
           .join("")
       : `<li class="muted">暂无事件</li>`;
 
     const q = d.queue || {};
+    const rl = q.rate_limiter || {};
     $("#queue").innerHTML = `
-      <span class="k">排队中</span><span class="v">${q.queued ?? 0}</span>
-      <span class="k">执行中</span><span class="v">${q.active ?? 0}</span>
+      <span class="k">排队中</span><span class="v">${num(q.queued)}</span>
+      <span class="k">执行中</span><span class="v">${num(q.active)}</span>
       <span class="k">并发上限</span><span class="v">${q.concurrency ?? "-"}</span>
-      <span class="k">已处理</span><span class="v">${q.processed ?? 0}</span>
-      <span class="k">重试次数</span><span class="v">${q.retried ?? 0}</span>
-      <span class="k">限流等待</span><span class="v">${q.rate_limiter?.waited_s ?? 0}s</span>`;
+      <span class="k">已处理</span><span class="v">${num(q.processed)}</span>
+      <span class="k">重试次数</span><span class="v">${num(q.retried)}</span>
+      <span class="k">限流等待</span><span class="v">${num(rl.waited_s)}s</span>`;
   } catch (err) {
-    console.error(err);
+    console.error("dashboard failed", err);
+    $("#kpis").innerHTML = `<div class="empty" style="grid-column:1/-1">看板加载失败：${esc(err.message)}</div>`;
   }
 }
 
@@ -285,11 +296,11 @@ async function loadDashboard() {
 async function loadReview() {
   try {
     const runs = await api("/api/runs?limit=20");
-    state.runs = runs;
+    state.runs = runs || [];
     const all = [];
-    for (const r of runs.slice(0, 6)) {
+    for (const r of state.runs.slice(0, 6)) {
       const detail = await api(`/api/runs/${r.id}`);
-      all.push(...detail.contents);
+      all.push(...(detail.contents || []));
     }
     state.reviewData = all;
     renderReview();
@@ -315,20 +326,24 @@ $("#filters").addEventListener("click", (e) => {
 /* ---------------- 系统状态 ---------------- */
 async function loadSystem() {
   try {
-    const s = await api("/api/system");
+    const s = (await api("/api/system")) || {};
+    const cache = s.cache || {};
     $("#sys-runtime").innerHTML = `
-      <span class="k">模型供应商</span><span class="v">${esc(s.provider)}</span>
-      <span class="k">模型</span><span class="v">${esc(s.model)}</span>
+      <span class="k">模型供应商</span><span class="v">${esc(s.provider || "-")}</span>
+      <span class="k">模型</span><span class="v">${esc(s.model || "-")}</span>
       <span class="k">真实计费</span><span class="v">${s.real_llm ? "是" : "否（离线 mock）"}</span>
-      <span class="k">提示词版本</span><span class="v">${esc(s.prompt_version)}</span>
-      <span class="k">缓存后端</span><span class="v">${esc(s.cache.backend)}</span>
-      <span class="k">缓存条目</span><span class="v">${s.cache.items}</span>
-      <span class="k">缓存命中率</span><span class="v">${(s.cache.hit_rate * 100).toFixed(1)}%</span>
-      <span class="k">通过阈值</span><span class="v">${s.thresholds.pass}</span>`;
+      <span class="k">提示词版本</span><span class="v">${esc(s.prompt_version || "-")}</span>
+      <span class="k">缓存后端</span><span class="v">${esc(cache.backend || "-")}</span>
+      <span class="k">缓存条目</span><span class="v">${num(cache.items)}</span>
+      <span class="k">缓存命中率</span><span class="v">${(num(cache.hit_rate) * 100).toFixed(1)}%</span>
+      <span class="k">通过阈值</span><span class="v">${num((s.thresholds || {}).pass, 78)}</span>`;
+
+    const rag = s.rag || {};
     $("#sys-rag").innerHTML = `
-      <span class="k">知识库分块</span><span class="v">${s.rag.chunks}</span>
-      <span class="k">已向量化</span><span class="v">${s.rag.indexed}</span>
-      <span class="k">平均块大小</span><span class="v">${s.rag.avg_tokens} tokens</span>`;
+      <span class="k">知识库分块</span><span class="v">${num(rag.chunks)}</span>
+      <span class="k">已向量化</span><span class="v">${num(rag.indexed)}</span>
+      <span class="k">平均块大小</span><span class="v">${num(rag.avg_tokens)} tokens</span>
+      <span class="k">检索方式</span><span class="v">${num(rag.indexed) ? "向量优先 / 关键词兜底" : "关键词"}</span>`;
   } catch (err) {
     toast("读取系统状态失败：" + err.message);
   }
@@ -341,8 +356,6 @@ async function loadSystem() {
     await loadProducts();
     await loadDashboard();
     conn.textContent = "服务在线";
-    const first = state.products[0];
-    if (first) console.log("当前商品：", first.name);
   } catch (err) {
     conn.textContent = "服务异常";
     conn.classList.add("bad");
